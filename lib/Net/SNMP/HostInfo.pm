@@ -60,7 +60,7 @@ use Net::SNMP::HostInfo::UdpEntry;
 use Net::SNMP;
 use Carp;
 
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 our $AUTOLOAD;
 
 my %oids = (
@@ -197,22 +197,35 @@ all Net::SNMP::HostInfo queries.
 If true, certain values, such as ipForwarding, will be
 returned as strings instead of numbers. For example,
 ipForwarding will be returned as 'forwarding(1)' or
-'not-forwarding(2)'.
+'not-forwarding(2)'. The following values are affected:
+
+    ipForwarding
+    tcpRtoAlgorithm
+    ipNetToMediaType (ipNetToMediaTable)
+    ipRouteType (ipRouteTable)
+    ipRouteProto (ipRouteTable)
+    tcpConnState (tcpConnTable)
+
+Additionally, ethernet addresses returned by
+ipNetToMediaPhysAddress will be prettified.
 
 =back
 
 Here are some examples:
 
     $hostinfo = Net::SNMP::HostInfo->new(Hostname => 'quartz',
-                                         Community => 'crystal');
+                                         Community => 'crystal',
+                                         Decode => 1);
 
     $interfaces = Net::SNMP::Interfaces->new(Hostname => 'quartz',
                                              Community => 'crystal');
-    $hostinfo = Net::SNMP::HostInfo->new(Session => $interfaces->session);
+    $hostinfo = Net::SNMP::HostInfo->new(Session => $interfaces->session,
+                                         Decode => 1);
 
     ($session, $error) = Net::SNMP->session(-hostname => 'quartz',
                                             -community => 'crystal');
-    $hostinfo = Net::SNMP::HostInfo->new(Session => $session);
+    $hostinfo = Net::SNMP::HostInfo->new(Session => $session,
+                                         Decode => 1);
 
 =cut
 
@@ -227,7 +240,7 @@ sub new
     $self->{_decode} = $args{Decode} || 0;
 
     my ($session, $error);
-    if ($args{Session} && ref($args{Session} eq "Net::SNMP")) {
+    if ($args{Session} && ref($args{Session}) eq "Net::SNMP") {
         # Use existing Net::SNMP session
         $session = $args{Session};
     } else {
@@ -439,14 +452,14 @@ Returns a list of Net::SNMP::HostInfo::IpAddrEntry objects.
 
 "This entity's IP Routing table."
 
-Returns a list of Net::SNMP::HostInfo::IpRouteTable objects.
+Returns a list of Net::SNMP::HostInfo::IpRouteEntry objects.
 
 =item ipNetToMediaTable
 
 "The IP Address Translation table used for mapping
 from IP addresses to physical addresses."
 
-Returns a list of Net::SNMP::HostInfo::IpNetToMediaTable objects.
+Returns a list of Net::SNMP::HostInfo::IpNetToMediaEntry objects.
 
 =item ipRoutingDiscards
 

@@ -1,6 +1,17 @@
 Changes to Net::SNMP::HostInfo
 ==============================
 
+** 0.04 2003-10-06
+
+Expanded the documentation for the Net::SNMP::HostInfo constructor.
+
+Fixed small errors in the documentation for the ipRouteTable
+and ipNetToMediaTable methods.
+
+Fixed an error in the constructor that caused the creation
+of Net::SNMP::HostInfo objects using the Session argument
+to fail.
+
 ** 0.03 2003-10-04
 
 Added the Decode option to the Net::SNMP::HostInfo constructor.
