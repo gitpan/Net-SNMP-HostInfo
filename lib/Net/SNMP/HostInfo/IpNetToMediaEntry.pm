@@ -12,8 +12,10 @@ Net::SNMP::HostInfo::IpNetToMediaEntry - An entry in the ipNetToMediaTable of a 
     $hostinfo = Net::SNMP::HostInfo->new(Hostname => $host);
 
     print "\nNet To Media Table:\n";
+    printf "%-3s %-15s %-17s %s\n",
+        qw/If NetAddress PhysAddress Type/;
     for $entry ($hostinfo->ipNetToMediaTable) {
-        printf "%3s %-15s %14s %4s\n",
+        printf "%-3s %-15s %-17s %s\n",
             $entry->ipNetToMediaIfIndex,
             $entry->ipNetToMediaNetAddress,
             $entry->ipNetToMediaPhysAddress,
@@ -44,6 +46,10 @@ my %oids = (
     ipNetToMediaType => '1.3.6.1.2.1.4.22.1.4', 
     );
 
+my %decodedObjects = (
+    ipNetToMediaType => { qw/1 other 2 invalid 3 dynamic 4 static/ },
+    );
+
 # Preloaded methods go here.
 
 =head1 METHODS
@@ -61,6 +67,7 @@ sub new
     my $self = {};
 
     $self->{_session} = $args{Session};
+    $self->{_decode} = $args{Decode};
     $self->{_index} = $args{Index};
     
     bless $self, $class;
@@ -133,9 +140,22 @@ sub AUTOLOAD
 
     my $response = $self->{_session}->get_request($oid);
 
-    #use Data::Dumper; print Dumper($response);
+    if ($response) {
+        my $value = $response->{$oid};
 
-    return $response->{$oid};
+        if ($self->{_decode} &&
+            exists $decodedObjects{$name} &&
+            exists $decodedObjects{$name}{$value}) {
+            return $decodedObjects{$name}{$value}."($value)";
+        } else {
+            if ($self->{_decode} && $name eq "ipNetToMediaPhysAddress") {
+                $value =~ s/^0x(\w\w)(\w\w)(\w\w)(\w\w)(\w\w)(\w\w)$/$1-$2-$3-$4-$5-$6/;
+            }
+            return $value;
+        }
+    } else {
+        return undef;
+    }
 }
 
 1;

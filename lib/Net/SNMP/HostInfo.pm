@@ -30,14 +30,23 @@ IP, TCP, and UDP information of a MIB-II compliant network host,
 such as a router or a PC.
 
 You can use it to retrieve numerous statistics on IP, ICMP, TCP, and UDP,
-as well as the IP routing table (ipRouteTable),
-the IP address table (ipAddrTable),
-the ARP table (ipNetToMediaTable),
-the TCP connection table (tcpConnTable),
-and the UDP listener table (udpTable).
+as well as the IP routing table (L<ipRouteTable>),
+the IP address table (L<ipAddrTable>),
+the ARP table (L<ipNetToMediaTable>),
+the TCP connection table (L<tcpConnTable>),
+and the UDP listener table (L<udpTable>).
 Browse the list of available methods to see what values are available.
 
 =cut
+
+# Base OIDs for the MIB-II groups
+# 1.3.6.1.2.1.1 = system
+# 1.3.6.1.2.1.2 = interfaces (implemented by Net::SNMP::Interfaces)
+# 1.3.6.1.2.1.4 = ip
+# 1.3.6.1.2.1.5 = icmp
+# 1.3.6.1.2.1.6 = tcp
+# 1.3.6.1.2.1.7 = udp
+# 1.3.6.1.2.1.11 = snmp (not implemented yet)
 
 use 5.006;
 use strict;
@@ -51,12 +60,10 @@ use Net::SNMP::HostInfo::UdpEntry;
 use Net::SNMP;
 use Carp;
 
-our $VERSION = '0.02';
+our $VERSION = '0.03';
 our $AUTOLOAD;
 
-# oids should be private (i.e. my, but our allows testing access)
 my %oids = (
-
     sysDescr    => '1.3.6.1.2.1.1.1', 
     sysObjectID => '1.3.6.1.2.1.1.2', 
     sysUpTime   => '1.3.6.1.2.1.1.3', 
@@ -140,21 +147,72 @@ my %oids = (
     
     );
 
+my %decodedObjects = (
+    ipForwarding => { qw/1 forwarding 2 not-forwarding/ },
+    tcpRtoAlgorithm => { qw/1 other 2 constant 3 rsre 4 vanj/ },
+    );
+
+my %tables = (
+    ipAddrTable =>
+        [qw/1.3.6.1.2.1.4.20.1.1 Net::SNMP::HostInfo::IpAddrEntry C4/],
+    ipRouteTable =>
+        [qw/1.3.6.1.2.1.4.21.1.1 Net::SNMP::HostInfo::IpRouteEntry C4/],
+    ipNetToMediaTable =>
+        [qw/1.3.6.1.2.1.4.22.1.1 Net::SNMP::HostInfo::IpNetToMediaEntry NC4/],
+    tcpConnTable =>
+        [qw/1.3.6.1.2.1.6.13.1.1 Net::SNMP::HostInfo::TcpConnEntry C4nC4n/],
+    udpTable =>
+        [qw/1.3.6.1.2.1.7.5.1.1 Net::SNMP::HostInfo::UdpEntry C4n/],
+    );
+
 # Preloaded methods go here.
 
 =head1 METHODS
 
 =over
 
-=item new(Hostname => $hostname, Community => $community)
+=item new
 
 Creates a new Net::SNMP::HostInfo object. You can specify the
-hostname and community string of the target host.
+following optional parameters:
 
-=item new(Session => $session)
+=over
 
-Creates a new Net::SNMP::HostInfo object from an existing
-Net::SNMP session.
+=item Hostname => $hostname
+
+The hostname of the target device; defaults to 'localhost'.
+
+=item Community => $community
+
+The community string of the target device; defaults to 'public'.
+
+=item Session => $session
+
+An alternative to specifying the Hostname and Community
+parameters: you can use an existing Net::SNMP session for
+all Net::SNMP::HostInfo queries.
+
+=item Decode => $decode
+
+If true, certain values, such as ipForwarding, will be
+returned as strings instead of numbers. For example,
+ipForwarding will be returned as 'forwarding(1)' or
+'not-forwarding(2)'.
+
+=back
+
+Here are some examples:
+
+    $hostinfo = Net::SNMP::HostInfo->new(Hostname => 'quartz',
+                                         Community => 'crystal');
+
+    $interfaces = Net::SNMP::Interfaces->new(Hostname => 'quartz',
+                                             Community => 'crystal');
+    $hostinfo = Net::SNMP::HostInfo->new(Session => $interfaces->session);
+
+    ($session, $error) = Net::SNMP->session(-hostname => 'quartz',
+                                            -community => 'crystal');
+    $hostinfo = Net::SNMP::HostInfo->new(Session => $session);
 
 =cut
 
@@ -166,12 +224,14 @@ sub new
 
     my $self = {};
 
+    $self->{_decode} = $args{Decode} || 0;
+
     my ($session, $error);
     if ($args{Session} && ref($args{Session} eq "Net::SNMP")) {
-        #print "Using existing Net::SNMP session\n";
+        # Use existing Net::SNMP session
         $session = $args{Session};
     } else {
-        #print "Creating new Net::SNMP session\n";
+        # Create new Net::SNMP session
         $self->{_hostname} = $args{Hostname} || 'localhost';
         $self->{_community} = $args{Community} || 'public';
         $self->{_port} = $args{Port} || 161;
@@ -185,7 +245,7 @@ sub new
 
     # check that we have a session with an SNMP host
     if (defined $session) {
-        my $oid = '1.3.6.1.2.1.1.5.0';
+        my $oid = '1.3.6.1.2.1.1.5.0'; # sysName
         my $response = $session->get_request($oid);
 
         if (defined $response) {
@@ -683,6 +743,11 @@ sub AUTOLOAD
     my ($name) = $AUTOLOAD =~ /::([^:]+)$/;
     #print "Called $name\n";
 
+    if (exists $tables{$name}) {
+        my ($baseoid, $class, $indexTemplate) = @{$tables{$name}};
+        return $self->getTable($baseoid, $class, $indexTemplate);
+    }
+
     if (!exists $oids{$name}) {
         croak "Can't locate object method '$name'";
     }
@@ -693,139 +758,75 @@ sub AUTOLOAD
 
     my $response = $self->{_session}->get_request($oid);
 
+    if ($response) {
+        my $value = $response->{$oid};
+
+        if ($self->{_decode} &&
+            exists $decodedObjects{$name} &&
+            exists $decodedObjects{$name}{$value}) {
+            return $decodedObjects{$name}{$value}."($value)";
+        } else {
+            return $value;
+        }
+    } else {
+        return undef;
+    }
+}
+
+# The ipAddrTable is indexed by ipAdEntAddr
+# |------baseoid------|--index---|
+# 1.3.6.1.2.1.4.20.1.1.192.168.0.1 = '192.168.0.1'
+
+# The ipRouteTable is indexed by ipRouteDest
+# |------baseoid------|---index----|
+# 1.3.6.1.2.1.4.21.1.1.192.168.0.255 = '192.168.0.255'
+
+# The index to the ipNetToMediaTable is formed of two values:
+#   ipNetToMediaIfIndex
+#   ipNetToMediaNetAddress
+# |------baseoid------|---index----|
+# 1.3.6.1.2.1.4.22.1.1.2.192.168.0.1 = '2'
+
+# The index to the tcpConnTable is formed of four values:
+#   tcpConnLocalAddress
+#   tcpConnLocalPort
+#   tcpConnRemAddress
+#   tcpConnRemPort
+# |------baseoid------|------------index-------------|
+# 1.3.6.1.2.1.6.13.1.1.192.168.0.1.12345.0.0.0.0.57528 = '2'
+
+# The index to the udpTable is formed of two values:
+#   udpLocalAddress
+#   udpLocalPort
+# |-----baseoid------|--------------|
+# 1.3.6.1.2.1.7.5.1.1.192.168.0.1.123 = '192.168.0.1'
+
+sub getTable
+{
+    my $self = shift;
+    my $baseoid = shift;
+    my $class = shift; # class for each entry in the table
+    my $indexTemplate = shift; # how to pack the object's index for sorting
+    
+    my $response = $self->{_session}->get_table(-baseoid => $baseoid);
     #use Data::Dumper; print Dumper($response);
 
-    return $response->{$oid};
-}
-
-sub ipAddrTable
-{
-    my $self = shift;
-
-    my $baseoid = '1.3.6.1.2.1.4.20.1.1';
-    my $response = $self->{_session}->get_table(-baseoid => $baseoid);
-
-    # TODO Check that $response is valid
-
-    my @ipAddrTable = ();
-
-    # The ipAddrTable is indexed by ipAdEntAddr
-
-    for my $address (values %$response) {
-        my %args = (
-            Index => $address,
-            Session => $self->{_session},
-            );
-        push @ipAddrTable, Net::SNMP::HostInfo::IpAddrEntry->new(%args);
-    }
-
-    return wantarray ? @ipAddrTable : \@ipAddrTable;
-}
-
-sub ipRouteTable
-{
-    my $self = shift;
-
-    my $baseoid = '1.3.6.1.2.1.4.21.1.1';
-    my $response = $self->{_session}->get_table(-baseoid => $baseoid);
-    use Data::Dumper; print Dumper($response);
-
-    my @ipRouteTable = ();
-
-    # The ipRouteTable is indexed by ipRouteDest
-
-    for my $dest (values %$response) {
-        my %args = (
-            Index => $dest,
-            Session => $self->{_session},
-            );
-        push @ipRouteTable, Net::SNMP::HostInfo::IpRouteEntry->new(%args);
-    }
-
-    return wantarray ? @ipRouteTable : \@ipRouteTable;
-}
-
-sub ipNetToMediaTable
-{
-    my $self = shift;
-
-    my $baseoid = '1.3.6.1.2.1.4.22.1.1';
-    my $response = $self->{_session}->get_table(-baseoid => $baseoid);
-
-    my @ipNetToMediaTable = ();
-
-    # The index to the ipNetToMediaTable is formed of two values:
-    #   ipNetToMediaIfIndex
-    #   ipNetToMediaNetAddress
-
-    my @indices = map { /^$baseoid\.(.*)/ } keys %$response;
-    #print "@indices\n";
+    my @table = ();
+    my @indices = sort { pack($indexTemplate, split(/\./, $a)) cmp
+                         pack($indexTemplate, split(/\./, $b)) }
+                  map { /^$baseoid\.(.*)/ } keys %$response;
+    #for (@indices) { print "$_\n"; }
 
     for my $index (@indices) {
         my %args = (
             Index => $index,
+            Decode => $self->{_decode},
             Session => $self->{_session},
             );
-        push @ipNetToMediaTable, Net::SNMP::HostInfo::IpNetToMediaEntry->new(%args);
+        push @table, $class->new(%args);
     }
 
-    return wantarray ? @ipNetToMediaTable : \@ipNetToMediaTable;
-}
-
-sub tcpConnTable
-{
-    my $self = shift;
-
-    my $baseoid = '1.3.6.1.2.1.6.13.1.1';
-    my $response = $self->{_session}->get_table(-baseoid => $baseoid);
-
-    my @tcpConnTable = ();
-
-    # The index to the tcpConnTable is formed of four values:
-    #   tcpConnLocalAddress
-    #   tcpConnLocalPort
-    #   tcpConnRemAddress
-    #   tcpConnRemPort
-
-    my @indices = map { /^$baseoid\.(.*)/ } keys %$response;
-    #print "@indices\n";
-
-    for my $index (@indices) {
-        my %args = (
-            Index => $index,
-            Session => $self->{_session},
-            );
-        push @tcpConnTable, Net::SNMP::HostInfo::TcpConnEntry->new(%args);
-    }
-
-    return wantarray ? @tcpConnTable : \@tcpConnTable;
-}
-
-sub udpTable
-{
-    my $self = shift;
-
-    my $baseoid = '1.3.6.1.2.1.7.5.1.1';
-    my $response = $self->{_session}->get_table(-baseoid => $baseoid);
-
-    my @udpTable = ();
-
-    # The index to the udpTable is formed of two values:
-    #   udpLocalAddress
-    #   udpLocalPort
-
-    my @indices = map { /^$baseoid\.(.*)/ } keys %$response;
-    #print "@indices\n";
-
-    for my $index (@indices) {
-        my %args = (
-            Index => $index,
-            Session => $self->{_session},
-            );
-        push @udpTable, Net::SNMP::HostInfo::UdpEntry->new(%args);
-    }
-
-    return wantarray ? @udpTable : \@udpTable;
+    return wantarray ? @table : \@table;
 }
 
 1;
@@ -844,18 +845,12 @@ James Macfarlane, E<lt>jmacfarla@cpan.orgE<gt>
 
 =head1 SEE ALSO
 
-RFC 1213 MIB-II
-
-Net::SNMP
-
-Net::SNMP::HostInfo::IpAddrEntry
-
-Net::SNMP::HostInfo::IpRouteEntry
-
-Net::SNMP::HostInfo::IpNetToMediaEntry
-
-Net::SNMP::HostInfo::TcpConnEntry
-
+RFC 1213 MIB-II,
+Net::SNMP,
+Net::SNMP::HostInfo::IpAddrEntry,
+Net::SNMP::HostInfo::IpRouteEntry,
+Net::SNMP::HostInfo::IpNetToMediaEntry,
+Net::SNMP::HostInfo::TcpConnEntry,
 Net::SNMP::HostInfo::UdpEntry
 
 =cut

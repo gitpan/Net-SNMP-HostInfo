@@ -12,8 +12,10 @@ Net::SNMP::HostInfo::TcpConnEntry - An entry in the tcpConnTable of a MIB-II hos
     $hostinfo = Net::SNMP::HostInfo->new(Hostname => $host);
 
     print "\nTcp Connection Table:\n";
+    printf "%-15s %-5s %-15s %-5s %s\n",
+        qw/LocalAddress Port RemAddress Port State/;
     for $entry ($hostinfo->tcpConnTable) {
-        printf "%-15s %-5s %-15s %-5s %4s\n",
+        printf "%-15s %-5s %-15s %-5s %s\n",
             $entry->tcpConnLocalAddress,
             $entry->tcpConnLocalPort,
             $entry->tcpConnRemAddress,
@@ -49,6 +51,21 @@ my %oids = (
     tcpConnRemPort => '1.3.6.1.2.1.6.13.1.5', 
     );
 
+my %decodedObjects = (
+    tcpConnState => { qw/1 closed
+                         2 listen
+                         3 synSent
+                         4 synReceived
+                         5 established
+                         6 finWait1
+                         7 finWait2
+                         8 closeWait
+                         9 lastAck
+                         10 closing
+                         11 timeWait
+                         12 deleteTCB/ },
+    );
+
 # Preloaded methods go here.
 
 =head1 METHODS
@@ -66,6 +83,7 @@ sub new
     my $self = {};
 
     $self->{_session} = $args{Session};
+    $self->{_decode} = $args{Decode};
     $self->{_index} = $args{Index};
     
     bless $self, $class;
@@ -152,9 +170,19 @@ sub AUTOLOAD
 
     my $response = $self->{_session}->get_request($oid);
 
-    #use Data::Dumper; print Dumper($response);
+    if ($response) {
+        my $value = $response->{$oid};
 
-    return $response->{$oid};
+        if ($self->{_decode} &&
+            exists $decodedObjects{$name} &&
+            exists $decodedObjects{$name}{$value}) {
+            return $decodedObjects{$name}{$value}."($value)";
+        } else {
+            return $value;
+        }
+    } else {
+        return undef;
+    }
 }
 
 1;

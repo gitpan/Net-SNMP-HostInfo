@@ -12,6 +12,8 @@ Net::SNMP::HostInfo::UdpEntry - An entry in the udpTable of a MIB-II host
     $hostinfo = Net::SNMP::HostInfo->new(Hostname => $host);
 
     print "\nUdp Listeners Table:\n";
+    printf "%-15s %-5s\n",
+        qw/LocalAddress Port/;
     for $entry ($hostinfo->udpTable) {
         printf "%-15s %-5s\n",
             $entry->udpLocalAddress,
@@ -57,6 +59,7 @@ sub new
     my $self = {};
 
     $self->{_session} = $args{Session};
+    $self->{_decode} = $args{Decode};
     $self->{_index} = $args{Index};
     
     bless $self, $class;
@@ -97,9 +100,11 @@ sub AUTOLOAD
 
     my $response = $self->{_session}->get_request($oid);
 
-    #use Data::Dumper; print Dumper($response);
-
-    return $response->{$oid};
+    if ($response) {
+        return $response->{$oid};
+    } else {
+        return undef;
+    }
 }
 
 1;

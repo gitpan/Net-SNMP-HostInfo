@@ -12,11 +12,15 @@ Net::SNMP::HostInfo::IpRouteEntry - An entry in the ipRouteTable of a MIB-II hos
     $hostinfo = Net::SNMP::HostInfo->new(Hostname => $host);
 
     print "\nRoute Table:\n";
+    printf "%-15s %-15s %-15s %-11s %-10s %-3s %-3s\n",
+        qw/Dest Mask NextHop Type Proto If Cost/;
     for $route ($hostinfo->ipRouteTable) {
-        printf "%-15s %-15s %-15s %3s %4s\n",
+        printf "%-15s %-15s %-15s %-11s %-10s %-3s %-3s\n",
             $route->ipRouteDest,
             $route->ipRouteMask,
             $route->ipRouteNextHop,
+            $route->ipRouteType,
+            $route->ipRouteProto,
             $route->ipRouteIfIndex,
             $route->ipRouteMetric1;
     }
@@ -53,6 +57,24 @@ my %oids = (
     ipRouteInfo    => '1.3.6.1.2.1.4.21.1.13',
     );
 
+my %decodedObjects = (
+    ipRouteType => { qw/1 other 2 invalid 3 direct 4 indirect/ },
+    ipRouteProto => { qw/1 other
+                         2 local
+                         3 netmgmt
+                         4 icmp
+                         5 egp
+                         6 ggp
+                         7 hello
+                         8 rip
+                         9 is-is
+                         10 es-is
+                         11 ciscoIgrp
+                         12 bbnSpfIgp
+                         13 ospf
+                         14 bgp/ },
+    );
+
 # Preloaded methods go here.
 
 =head1 METHODS
@@ -70,6 +92,7 @@ sub new
     my $self = {};
 
     $self->{_session} = $args{Session};
+    $self->{_decode} = $args{Decode};
     $self->{_index} = $args{Index};
     
     bless $self, $class;
@@ -259,9 +282,19 @@ sub AUTOLOAD
 
     my $response = $self->{_session}->get_request($oid);
 
-    #use Data::Dumper; print Dumper($response);
+    if ($response) {
+        my $value = $response->{$oid};
 
-    return $response->{$oid};
+        if ($self->{_decode} &&
+            exists $decodedObjects{$name} &&
+            exists $decodedObjects{$name}{$value}) {
+            return $decodedObjects{$name}{$value}."($value)";
+        } else {
+            return $value;
+        }
+    } else {
+        return undef;
+    }
 }
 
 1;

@@ -12,8 +12,10 @@ Net::SNMP::HostInfo::IpAddrEntry - An entry in the ipAddrTable of a MIB-II host
     $hostinfo = Net::SNMP::HostInfo->new(Hostname => $host);
 
     print "\nAddress Table:\n";
+    printf "%-15s %-3s %-15s %-5s %5s\n",
+        qw/Addr If NetMask Bcast ReasmMaxSize/;
     for $addr ($hostinfo->ipAddrTable) {
-        printf "%-15s %2s %-15s %-15s %5s\n",
+        printf "%-15s %-3s %-15s %-5s %5s\n",
             $addr->ipAdEntAddr,
             $addr->ipAdEntIfIndex,
             $addr->ipAdEntNetMask,
@@ -63,6 +65,7 @@ sub new
     my $self = {};
 
     $self->{_session} = $args{Session};
+    $self->{_decode} = $args{Decode};
     $self->{_index} = $args{Index};
     
     bless $self, $class;
@@ -130,9 +133,11 @@ sub AUTOLOAD
 
     my $response = $self->{_session}->get_request($oid);
 
-    #use Data::Dumper; print Dumper($response);
-
-    return $response->{$oid};
+    if ($response) {
+        return $response->{$oid};
+    } else {
+        return undef;
+    }
 }
 
 1;
