@@ -141,7 +141,7 @@ __END__
 
 =head1 AUTHOR
 
-James Macfarlane
+James Macfarlane, E<lt>jmacfarla@cpan.orgE<gt>
 
 =head1 SEE ALSO
 

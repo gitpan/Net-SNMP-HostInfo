@@ -1,6 +1,22 @@
-Revision history for Perl extension Net::SNMP::MIB2.
+Changes to Net::SNMP::HostInfo
+==============================
 
-0.01  Mon May 12 13:14:46 2003
-	- original version; created by h2xs 1.21 with options
-		-AX -n Net::SNMP::MIB2
+** 0.02 2003-09-28
 
+Added the Session parameter to the Net::SNMP::HostInfo constructor
+to allow a Net::SNMP::HostInfo object to be created using an existing
+Net::SNMP session:
+
+    $hostinfo = Net::SNMP::HostInfo->new(Session => $session);
+
+instead of
+
+    $hostinfo = Net::SNMP::HostInfo->new(Hostname => $hostname,
+                                         Community => $community);
+
+Add the session method to the Net::SNMP::HostInfo object to allow
+the user to access the current Net::SNMP session.
+
+** 0.01 2003-05-12
+	    
+Original version.

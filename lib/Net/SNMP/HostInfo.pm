@@ -51,7 +51,7 @@ use Net::SNMP::HostInfo::UdpEntry;
 use Net::SNMP;
 use Carp;
 
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 our $AUTOLOAD;
 
 # oids should be private (i.e. my, but our allows testing access)
@@ -151,6 +151,11 @@ my %oids = (
 Creates a new Net::SNMP::HostInfo object. You can specify the
 hostname and community string of the target host.
 
+=item new(Session => $session)
+
+Creates a new Net::SNMP::HostInfo object from an existing
+Net::SNMP session.
+
 =cut
 
 sub new
@@ -161,15 +166,22 @@ sub new
 
     my $self = {};
 
-    $self->{_hostname} = $args{Hostname} || 'localhost';
-    $self->{_community} = $args{Community} || 'public';
-    $self->{_port} = $args{Port} || 161;
+    my ($session, $error);
+    if ($args{Session} && ref($args{Session} eq "Net::SNMP")) {
+        #print "Using existing Net::SNMP session\n";
+        $session = $args{Session};
+    } else {
+        #print "Creating new Net::SNMP session\n";
+        $self->{_hostname} = $args{Hostname} || 'localhost';
+        $self->{_community} = $args{Community} || 'public';
+        $self->{_port} = $args{Port} || 161;
 
-    my ($session, $error) = Net::SNMP->session(
-        -hostname => $self->{_hostname},
-        -community => $self->{_community},
-        -port => $self->{_port}
-        );
+        ($session, $error) = Net::SNMP->session(
+            -hostname => $self->{_hostname},
+            -community => $self->{_community},
+            -port => $self->{_port}
+            );
+    }
 
     # check that we have a session with an SNMP host
     if (defined $session) {
@@ -190,6 +202,15 @@ sub new
     bless $self, $class;
     return $self;
 }
+
+=item session
+
+Returns the Net::SNMP session object being used.
+The session can be then used for other SNMP queries.
+
+=cut
+
+sub session { return $_[0]->{_session}; }
 
 =item ipForwarding
 
@@ -707,6 +728,7 @@ sub ipRouteTable
 
     my $baseoid = '1.3.6.1.2.1.4.21.1.1';
     my $response = $self->{_session}->get_table(-baseoid => $baseoid);
+    use Data::Dumper; print Dumper($response);
 
     my @ipRouteTable = ();
 
@@ -818,7 +840,7 @@ Jonathan Stowe - Author of Net::SNMP::Interfaces
 
 =head1 AUTHOR
 
-James Macfarlane
+James Macfarlane, E<lt>jmacfarla@cpan.orgE<gt>
 
 =head1 SEE ALSO
 
