@@ -1,0 +1,6 @@
+Revision history for Perl extension Net::SNMP::MIB2.
+
+0.01  Mon May 12 13:14:46 2003
+	- original version; created by h2xs 1.21 with options
+		-AX -n Net::SNMP::MIB2
+
